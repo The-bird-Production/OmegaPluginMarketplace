@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const archiver = require('archiver');
+require('dotenv').config();
 
 const app = express();
 const PORT = 3002;
@@ -11,7 +12,7 @@ const PORT = 3002;
 const PLUGIN_DIR = path.join(__dirname, 'plugins');
 
 // GitHub Artifact API configuration
-const GITHUB_API_URL = 'https://api.github.com/repos/faynix-code/OmegaPluginMarketPlace/actions/artifacts';
+const GITHUB_API_URL = 'https://api.github.com/repos/The-bird-Production/OmegaPluginMarketPlace/actions/artifacts';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN; 
 
 // Helper function to download and extract plugins
