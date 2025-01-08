@@ -52,14 +52,6 @@ jobs:
           fi
         done
 
-    - name: Sign ZIP package
-      env:
-        PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-      run: |
-        for zipfile in plugins/*.zip; do
-          openssl dgst -sha256 -sign <(echo "$PRIVATE_KEY") -out "$zipfile.sig" "$zipfile"
-        done
-
     - name: Upload validated plugins
       uses: actions/upload-artifact@v3
       with:
