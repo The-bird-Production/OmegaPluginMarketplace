@@ -1,0 +1,67 @@
+name: Validate Plugin
+
+on:
+  push:
+    paths:
+      - "plugins/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get install -y unzip
+        npm install -g prisma
+
+    - name: Validate plugin structure
+      run: |
+        for plugin in plugins/*; do
+          if [ -d "$plugin" ]; then
+            echo "Validating $plugin"
+            if [ ! -f "$plugin/plugin.json" ] || [ ! -d "$plugin/Routes" ] || [ ! -d "$plugin/Controller" ] || [ ! -d "$plugin/public" ] || [ ! -d "$plugin/admin" ]; then
+              echo "Invalid structure for $plugin"
+              exit 1
+            fi
+          fi
+        done
+
+    - name: Validate Prisma schema conflicts
+      run: |
+        BASE_SCHEMA="schema.prisma"  # Path to the base Prisma schema
+        for plugin in plugins/*; do
+          if [ -d "$plugin" ] && [ -f "$plugin/prisma/schema.prisma" ]; then
+            echo "Checking Prisma schema for $plugin"
+            prisma diff --from-schema-path=$BASE_SCHEMA --to-schema-path="$plugin/prisma/schema.prisma" > /dev/null
+            if [ $? -ne 0 ]; then
+              echo "Conflict detected in Prisma schema for $plugin"
+              exit 1
+            fi
+          fi
+        done
+
+    - name: Create ZIP package
+      run: |
+        for plugin in plugins/*; do
+          if [ -d "$plugin" ]; then
+            zip -r "$plugin.zip" "$plugin"
+          fi
+        done
+
+    - name: Sign ZIP package
+      env:
+        PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+      run: |
+        for zipfile in plugins/*.zip; do
+          openssl dgst -sha256 -sign <(echo "$PRIVATE_KEY") -out "$zipfile.sig" "$zipfile"
+        done
+
+    - name: Upload validated plugins
+      uses: actions/upload-artifact@v3
+      with:
+        name: validated-plugins
+        path: plugins/*.zip
