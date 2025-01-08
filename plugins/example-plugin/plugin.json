@@ -1,6 +1,6 @@
 {
   "name": "Exemple plugin",
   "version": "1.0.0",
-  "description": "Un plugin d'exemple",
+  "description": "Just for example",
   "folder": "example-plugin"
 }
