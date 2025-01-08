@@ -44,11 +44,13 @@ jobs:
           fi
         done
 
-    - name: Create ZIP package
+    - name: Create ZIP packages
       run: |
         for plugin in plugins/*; do
           if [ -d "$plugin" ]; then
-            zip -r "$plugin.zip" "$plugin"
+            plugin_name=$(basename "$plugin")
+            echo "Creating ZIP for $plugin_name"
+            zip -r "artifacts/$plugin_name.zip" "$plugin"
           fi
         done
 
@@ -56,4 +58,4 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: validated-plugins
-        path: plugins/*.zip
+        path: artifacts/*.zip
