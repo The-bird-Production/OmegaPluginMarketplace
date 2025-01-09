@@ -20,6 +20,7 @@ jobs:
 
     - name: Validate plugin structure
       run: |
+        mkdir -p validated_plugins
         for plugin in plugins/*; do
           if [ -d "$plugin" ]; then
             echo "Validating $plugin"
@@ -27,13 +28,14 @@ jobs:
               echo "Invalid structure for $plugin"
               exit 1
             fi
+            cp -r "$plugin" validated_plugins/
           fi
         done
 
     - name: Validate Prisma schema conflicts
       run: |
         BASE_SCHEMA="schema.prisma"  # Path to the base Prisma schema
-        for plugin in plugins/*; do
+        for plugin in validated_plugins/*; do
           if [ -d "$plugin" ] && [ -f "$plugin/prisma/schema.prisma" ]; then
             echo "Checking Prisma schema for $plugin"
             prisma diff --from-schema-path=$BASE_SCHEMA --to-schema-path="$plugin/prisma/schema.prisma" > /dev/null
@@ -44,18 +46,8 @@ jobs:
           fi
         done
 
-    - name: Create ZIP packages
-      run: |
-        for plugin in plugins/*; do
-          if [ -d "$plugin" ]; then
-            plugin_name=$(basename "$plugin")
-            echo "Creating ZIP for $plugin_name"
-            zip -r "artifacts/$plugin_name.zip" "$plugin"
-          fi
-        done
-
     - name: Upload validated plugins
       uses: actions/upload-artifact@v3
       with:
         name: validated-plugins
-        path: artifacts/*.zip
+        path: validated_plugins/
