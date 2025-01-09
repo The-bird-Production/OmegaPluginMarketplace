@@ -130,5 +130,5 @@ app.listen(PORT, () => {
         fs.mkdirSync(VALIDATED_PLUGIN_DIR, { recursive: true });
     }
     downloadAndExtractValidatedPlugins(); // Initial download of plugins
-    setInterval(downloadAndExtractValidatedPlugins, 3600000); // Refresh every hour
+    setInterval(downloadAndExtractValidatedPlugins, 600000); // Refresh every ten minutes
 });
