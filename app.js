@@ -1,116 +1,134 @@
+// Code for Marketplace with Express.js
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const archiver = require('archiver');
-require('dotenv').config();
+const unzipper = require('unzipper'); // For extracting ZIP files
+require('dotenv').config(); // For loading environment variables
 
 const app = express();
 const PORT = 3002;
 
-// Directories
-const PLUGIN_DIR = path.join(__dirname, 'plugins');
+// Directory to store validated plugins
+const VALIDATED_PLUGIN_DIR = path.join(__dirname, 'validated_plugins');
+const TEMP_ZIP_DIR = path.join(__dirname, 'temp_zip');
 
 // GitHub Artifact API configuration
-const GITHUB_API_URL = 'https://api.github.com/repos/The-bird-Production/OmegaPluginMarketPlace/actions/artifacts';
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN; 
+const GITHUB_API_URL = process.env.GITHUB_API_URL; // Replace {owner} and {repo}
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN; // Set your GitHub personal access token
 
-// Helper function to download and extract plugins
-async function downloadAndExtractPlugins() {
+// Helper function to download and extract the latest validated plugins
+async function downloadAndExtractValidatedPlugins() {
     try {
+        console.log('Fetching artifacts from GitHub...');
         const response = await axios.get(GITHUB_API_URL, {
             headers: {
                 Authorization: `Bearer ${GITHUB_TOKEN}`,
             },
         });
 
-        const artifacts = response.data.artifacts.filter((artifact) => artifact.name === 'validated-plugins');
+        const artifacts = response.data.artifacts
+            .filter((artifact) => artifact.name === 'validated-plugins')
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)); // Sort by creation date (latest first)
 
-        for (const artifact of artifacts) {
-            const downloadResponse = await axios.get(artifact.archive_download_url, {
-                headers: {
-                    Authorization: `Bearer ${GITHUB_TOKEN}`,
-                },
-                responseType: 'arraybuffer',
-            });
-
-            const tempZipPath = path.join(__dirname, `${artifact.id}.zip`);
-            fs.writeFileSync(tempZipPath, downloadResponse.data);
-
-            const extractPath = path.join(PLUGIN_DIR, artifact.name);
-            await extractZip(tempZipPath, extractPath);
-
-            console.log(`Extracted and saved: ${artifact.name}`);
-            fs.unlinkSync(tempZipPath); // Clean up the temp zip file
+        if (artifacts.length === 0) {
+            console.log('No validated plugin artifacts found.');
+            return;
         }
+
+        const latestArtifact = artifacts[0];
+        console.log(`Downloading latest artifact: ${latestArtifact.name}`);
+
+        const downloadResponse = await axios.get(latestArtifact.archive_download_url, {
+            headers: {
+                Authorization: `Bearer ${GITHUB_TOKEN}`,
+            },
+            responseType: 'arraybuffer',
+        });
+
+        // Save the downloaded ZIP file temporarily
+        const zipPath = path.join(TEMP_ZIP_DIR, `${latestArtifact.id}.zip`);
+        if (!fs.existsSync(TEMP_ZIP_DIR)) {
+            fs.mkdirSync(TEMP_ZIP_DIR, { recursive: true });
+        }
+        fs.writeFileSync(zipPath, downloadResponse.data);
+
+        console.log('Extracting plugins...');
+        
+        await extractZip(zipPath, VALIDATED_PLUGIN_DIR);
+
+      
+        console.log('Plugins extracted successfully.');
+
+        // Clean up the temporary ZIP file
+        fs.unlinkSync(zipPath); 
     } catch (error) {
-        console.error('Error downloading plugins:', error.message);
+        console.error('Error downloading or extracting plugins:', error.message);
     }
 }
 
 // Helper function to extract ZIP files
-async function extractZip(zipPath, extractPath) {
-    const unzipper = require('unzipper');
-    fs.mkdirSync(extractPath, { recursive: true });
-
+async function extractZip(zipPath, outputDir) {
     return fs
         .createReadStream(zipPath)
-        .pipe(unzipper.Extract({ path: extractPath }))
+        .pipe(unzipper.Extract({ path: outputDir }))
         .promise();
 }
 
-// Route to fetch plugins
+// Route to fetch validated plugins
 app.get('/plugins', (req, res) => {
-    if (!fs.existsSync(PLUGIN_DIR)) {
+    if (!fs.existsSync(VALIDATED_PLUGIN_DIR)) {
         return res.status(200).json({ plugins: [] });
     }
 
-    const plugins = fs.readdirSync(PLUGIN_DIR)
-        .filter((dir) => {
-            const pluginJsonPath = path.join(PLUGIN_DIR, dir, 'plugin.json');
-            return fs.existsSync(pluginJsonPath);
-        })
-        .map((dir) => {
-            const pluginJsonPath = path.join(PLUGIN_DIR, dir, 'plugin.json');
-            const pluginData = JSON.parse(fs.readFileSync(pluginJsonPath, 'utf-8'));
-            return {
-                name: pluginData.name,
-                version: pluginData.version,
-                description: pluginData.description,
-                downloadUrl: `/download/${dir}`,
-            };
-        });
+    const plugins = fs.readdirSync(VALIDATED_PLUGIN_DIR).map((plugin) => {
+        const pluginJsonPath = path.join(VALIDATED_PLUGIN_DIR, plugin, 'plugin.json');
+        const pluginInfo = fs.existsSync(pluginJsonPath) ? require(pluginJsonPath) : { name: plugin };
+
+        return {
+            name: pluginInfo.name || plugin,
+            downloadUrl: `/download/${plugin}`,
+        };
+    });
 
     res.status(200).json({ plugins });
 });
 
-// Route to download a plugin as a ZIP file
+// Route to download a validated plugin as a ZIP
 app.get('/download/:pluginName', (req, res) => {
     const { pluginName } = req.params;
-    const pluginPath = path.join(PLUGIN_DIR, pluginName);
+    const pluginPath = path.join(VALIDATED_PLUGIN_DIR, pluginName);
 
     if (!fs.existsSync(pluginPath)) {
         return res.status(404).json({ message: 'Plugin not found' });
     }
 
-    const zipFileName = `${pluginName}.zip`;
-    res.setHeader('Content-Disposition', `attachment; filename=${zipFileName}`);
-    res.setHeader('Content-Type', 'application/zip');
+    const zipPath = path.join(TEMP_ZIP_DIR, `${pluginName}.zip`);
 
+    // Zip the plugin folder
+    const archiver = require('archiver');
+    const output = fs.createWriteStream(zipPath);
     const archive = archiver('zip', { zlib: { level: 9 } });
-    archive.on('error', (err) => res.status(500).send({ error: err.message }));
 
-    archive.pipe(res);
+    archive.pipe(output);
     archive.directory(pluginPath, false);
     archive.finalize();
+
+    output.on('close', () => {
+        res.download(zipPath, `${pluginName}.zip`, (err) => {
+            if (!err) {
+                fs.unlinkSync(zipPath); // Clean up the temporary ZIP after download
+            }
+        });
+    });
 });
 
 // Start the server
 app.listen(PORT, () => {
     console.log(`Marketplace server running on port ${PORT}`);
-    if (!fs.existsSync(PLUGIN_DIR)) {
-        fs.mkdirSync(PLUGIN_DIR);
+    if (!fs.existsSync(VALIDATED_PLUGIN_DIR)) {
+        fs.mkdirSync(VALIDATED_PLUGIN_DIR, { recursive: true });
     }
-    downloadAndExtractPlugins(); // Initial download of plugins
-    setInterval(downloadAndExtractPlugins, 3600000); // Refresh every hour
+    downloadAndExtractValidatedPlugins(); // Initial download of plugins
+    setInterval(downloadAndExtractValidatedPlugins, 3600000); // Refresh every hour
 });
