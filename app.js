@@ -86,8 +86,9 @@ app.get('/plugins', (req, res) => {
         const pluginInfo = fs.existsSync(pluginJsonPath) ? require(pluginJsonPath) : { name: plugin };
 
         return {
+            id : pluginInfo.id || plugin,
             name: pluginInfo.name || plugin,
-            downloadUrl: `/download/${plugin}`,
+            downloadUrl: `/download/${pluginInfo.id || plugin}`,
         };
     });
 
@@ -95,8 +96,15 @@ app.get('/plugins', (req, res) => {
 });
 
 // Route to download a validated plugin as a ZIP
-app.get('/download/:pluginName', (req, res) => {
-    const { pluginName } = req.params;
+app.get('/download/:pluginId', (req, res) => {
+    const { pluginId } = req.params;
+    // Locate plugin name with the given pluginId
+    const pluginName = fs.readdirSync(VALIDATED_PLUGIN_DIR).find((plugin) => {
+        const pluginJsonPath = path.join(VALIDATED_PLUGIN_DIR, plugin, 'plugin.json');
+        const pluginInfo = fs.existsSync(pluginJsonPath) ? require(pluginJsonPath) : { name: plugin };
+        return pluginInfo.id === pluginId;
+    });
+
     const pluginPath = path.join(VALIDATED_PLUGIN_DIR, pluginName);
 
     if (!fs.existsSync(pluginPath)) {
