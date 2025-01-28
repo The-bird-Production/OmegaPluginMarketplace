@@ -3,5 +3,6 @@
   "name": "Hellow world ",
   "version": "1.0.0",
   "description": "An hello world plugin",
-  "folder": "hello-world"
+  "folder": "hello-world",
+  "url": "/hello-world"
 }
