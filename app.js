@@ -88,6 +88,8 @@ app.get('/plugins', (req, res) => {
         return {
             id : pluginInfo.id || plugin,
             name: pluginInfo.name || plugin,
+            version: pluginInfo.version || 'none',
+            description: pluginInfo.description || 'No description available',
             downloadUrl: `/download/${pluginInfo.id || plugin}`,
         };
     });
